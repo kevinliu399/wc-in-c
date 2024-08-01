@@ -2,6 +2,8 @@
 #include <stdlib.h>
 #include <stdbool.h>
 #include <string.h>
+#include <wchar.h>
+#include <locale.h>
 
 long compute_total_bytes(FILE *fileptr);
 long compute_total_words(FILE *fileptr);
@@ -54,7 +56,7 @@ int main(int argc, char *argv[])
         flag = argv[1];
         // TODO: Print error for invalid flags
 
-        file = fopen(argv[2], "r");
+        file = fopen(argv[2], "rb");
         if (file == NULL)
         {
             perror("Error opening file");
@@ -123,9 +125,22 @@ long compute_total_lines(FILE *fileptr)
     return line_count;
 }
 
-long compute_total_chars(FILE *fileptr)
-{
-    return 0;
+long compute_total_chars(FILE *fileptr) {
+    setlocale(LC_ALL, "en_US.UTF-8"); // sets the locale to UTF-8 instead of bytes
+    
+    long char_count = 0;
+    wint_t wch;
+    
+    while ((wch = fgetwc(fileptr)) != WEOF) {
+        char_count++;
+    }
+    
+    if (ferror(fileptr)) {
+        fprintf(stderr, "An error occurred while reading the file.\n");
+        return -1;
+    }
+    
+    return char_count;
 }
 
 long compute_total_words(FILE *fileptr)
