@@ -145,5 +145,19 @@ long compute_total_chars(FILE *fileptr) {
 
 long compute_total_words(FILE *fileptr)
 {
-    return 0;
+    long word_count = 0;
+    char ch;
+    bool in_word = false;
+
+    while ((ch = fgetc(fileptr)) != EOF) {
+        if (ch == ' ' || ch == '\n' || ch == '\t') {
+            in_word = false;
+        } 
+        else if (!in_word) {
+            in_word = true;
+            word_count ++;
+        }
+    }
+
+    return word_count;
 }
