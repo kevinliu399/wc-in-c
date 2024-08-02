@@ -9,6 +9,7 @@ long compute_total_bytes(FILE *fileptr);
 long compute_total_words(FILE *fileptr);
 long compute_total_chars(FILE *fileptr);
 long compute_total_lines(FILE *fileptr);
+bool are_flags_valid(const char *flags);
 
 int main(int argc, char *argv[])
 {
@@ -19,10 +20,6 @@ int main(int argc, char *argv[])
     -w : number of words
     -m : number of charcter
     */
-    const char c_flag = 'c';
-    const char l_flag = 'l';
-    const char w_flag = 'w';
-    const char m_flag = 'm';
     char *has_cflag = NULL;
     char *has_lflag = NULL;
     char *has_wflag = NULL;
@@ -33,14 +30,15 @@ int main(int argc, char *argv[])
         compute_total_bytes,
         compute_total_lines,
         compute_total_words,
-        compute_total_chars,};
-    bool has_flag = false;
+        compute_total_chars,
+    };
+    bool has_valid_flag = false;
     char *flag = NULL;
     char result_buffer[256] = "";
     FILE *file;
     long results[4] = {0, 0, 0, 0};
 
-    if (argc < 3)
+    if (argc > 3)
     {
         fprintf(stderr, "Usage: %s <flags> <filename>\n", argv[0]);
         return 1;
@@ -48,15 +46,19 @@ int main(int argc, char *argv[])
 
     if (argc > 2)
     {
-        has_flag = true;
+        flag = argv[1];
+        has_valid_flag = are_flags_valid(flag);
+
+        if (!has_valid_flag)
+        {
+            fprintf(stderr, "Flags must start with a hyphen and only m, l, w, c are supported\n");
+            return 1;
+        }
     }
 
-    if (has_flag)
+    if (!has_valid_flag)
     {
-        flag = argv[1];
-        // TODO: Print error for invalid flags
-
-        file = fopen(argv[2], "rb");
+        file = fopen(argv[1], "rb");
         if (file == NULL)
         {
             perror("Error opening file");
@@ -66,21 +68,38 @@ int main(int argc, char *argv[])
         // Compute all the flags
         for (int i = 0; i < 4; i++)
         {
+            rewind(file); // reset file pointer
+            results[i] = function_array[i](file);
+            char temp[64]; // temp buffer for each result
+            snprintf(temp, sizeof(temp), "%ld ", results[i]);
+            strcat(result_buffer, temp); // add the temp result to the buffer
+        }
+    }
+
+    else if (has_valid_flag)
+    {
+
+        file = fopen(argv[2], "rb");
+        if (file == NULL)
+        {
+            perror("Error opening file");
+            return 1;
+        }
+
+        for (int i = 0; i < 4; i++)
+        {
             all_flags[i] = strchr(flag, flag_type[i]);
             if (all_flags[i] != NULL)
             {
                 rewind(file); // reset file pointer
                 results[i] = function_array[i](file);
                 char temp[64]; // temp buffer for each result
-                snprintf(temp, sizeof(temp), "%c: %ld ", flag_type[i], results[i]);
+                snprintf(temp, sizeof(temp), "%ld ", results[i]);
                 strcat(result_buffer, temp); // add the temp result to the buffer
             };
         }
     }
 
-    // TODO: when there's no flag
-
-    strcat(result_buffer, argv[2]);
     printf("%s\n", result_buffer);
 
     fclose(file);
@@ -97,7 +116,6 @@ long compute_total_bytes(FILE *fileptr)
     return file_size;
 }
 
-// TODO
 long compute_total_lines(FILE *fileptr)
 {
     long line_count = 0;
@@ -125,39 +143,81 @@ long compute_total_lines(FILE *fileptr)
     return line_count;
 }
 
-long compute_total_chars(FILE *fileptr) {
-    setlocale(LC_ALL, "en_US.UTF-8"); // sets the locale to UTF-8 instead of bytes
-    
+long compute_total_chars(FILE *fileptr)
+{
+    setlocale(LC_ALL, "en_US.UTF-8");
+
     long char_count = 0;
-    wint_t wch;
-    
-    while ((wch = fgetwc(fileptr)) != WEOF) {
-        char_count++;
+    int ch;
+    mbstate_t state = {0}; // mbstate_t : multibyte state object
+    char buf[MB_CUR_MAX];
+    size_t nbytes;
+
+    while ((ch = fgetc(fileptr)) != EOF)
+    {
+        buf[0] = ch;
+        nbytes = 1;
+
+        if ((ch & 0xC0) == 0xC0)
+        { // 0xC0 = 11000000, checks if the first two bits are 1 for UTF-8 encoding
+            while ((ch = fgetc(fileptr)) != EOF && (ch & 0xC0) == 0x80)
+            {
+                buf[nbytes++] = ch;
+            }
+            ungetc(ch, fileptr);
+        }
+
+        if (mbrtowc(NULL, buf, nbytes, &state) != (size_t)-1)
+        {
+            char_count++;
+        }
     }
-    
-    if (ferror(fileptr)) {
+
+    if (ferror(fileptr))
+    {
         fprintf(stderr, "An error occurred while reading the file.\n");
         return -1;
     }
-    
+
     return char_count;
 }
-
 long compute_total_words(FILE *fileptr)
 {
     long word_count = 0;
     char ch;
     bool in_word = false;
 
-    while ((ch = fgetc(fileptr)) != EOF) {
-        if (ch == ' ' || ch == '\n' || ch == '\t') {
+    while ((ch = fgetc(fileptr)) != EOF)
+    {
+        if (ch == ' ' || ch == '\n' || ch == '\t')
+        {
             in_word = false;
-        } 
-        else if (!in_word) {
+        }
+        else if (!in_word)
+        {
             in_word = true;
-            word_count ++;
+            word_count++;
         }
     }
 
     return word_count;
+}
+
+bool are_flags_valid(const char *flags)
+{
+    if (*flags == '-')
+    {
+        flags++;
+    }
+
+    // Check each character
+    while (*flags)
+    {
+        if (*flags != 'w' && *flags != 'l' && *flags != 'c' && *flags != 'm')
+        {
+            return false;
+        }
+        flags++;
+    }
+    return true;
 }
